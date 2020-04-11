@@ -1,0 +1,129 @@
+---
+title: "Untitled"
+author: "Tejas Jayant Patil"
+date: "1 March 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+data <-read_csv("ks-projects-201801.csv")
+
+```
+
+```{r maincatgrouping}
+MainCatGrouping<-data%>%
+ filter(year(deadline)!=2018 & state %in% c("successful","failed"))%>%      separate(launched,into=c("year","month","date","hour",
+                     "minute","seconds"))%>%
+  mutate(launched_date =paste(year,month,date,sep="/"),
+         launched_date=ymd(launched_date),
+    deadline= ymd(deadline))
+MainCatGrouping$year  = as.factor(year(MainCatGrouping$deadline))
+MainCatGrouping$month  = as.factor(month(MainCatGrouping$deadline))
+head(MainCatGrouping)
+```
+```{r fisher dataset}
+kickstarters_extra<-data%>%
+ mutate(pctfunding=usd_pledged_real/usd_goal_real, overage = usd_pledged_real-usd_goal_real,
+        deadline= ymd(deadline),
+        launched=ymd_hms(launched))%>%
+ filter(usd_goal_real>100)%>%
+ filter(pctfunding>0)%>%
+ filter(backers>0)
+```
+```{r adding month abd year of deadline}
+
+kickstarters_extra$year  = as.factor(year(kickstarters_extra$deadline))
+kickstarters_extra$month  = as.factor(month(kickstarters_extra$deadline))
+head(kickstarters_extra)
+
+```
+
+```{r EDA Type1 }
+ggplot(MainCatGrouping,aes(x= year))+geom_bar(aes(fill = state))+labs(title = "Number of Kickstarters VS Years", y="Number of Kickstarters")
+ggplot(MainCatGrouping,aes(x= month))+geom_bar(aes(fill = state))+labs(title = "Number of Kickstarters VS Months of year", y="Number of Kickstarters")
+
+
+test<-MainCatGrouping%>%group_by(main_category)%>%
+  count(state)
+
+ggplot(MainCatGrouping,aes(x=main_category))+geom_bar(aes(fill = state)) + coord_flip()+labs(title = "category with success/failure")
+
+ggplot(test,aes(x=reorder(main_category,n),y=n))+geom_col(aes(fill = state)) + coord_flip()+labs(title = "Main categories VS Number of Kickstarters", x="Main Categories", y="Number of Kickstarters")
+```
+
+```{r seperating launched into date and time}
+MainCatGrouping%>%
+          separate(launched,into=c("year","month","date","hour",
+                     "minute","seconds"))%>%mutate(Month=match(month,month.abb),
+                         launched_date =paste(year,month,date,sep="/"))
+
+```
+
+```{r success failur based on backer }
+avg_backers <- MainCatGrouping %>% group_by(main_category) %>% summarise(avg_backers=mean(backers))
+
+MainCatGrouping %>% filter(state=="successful") %>% group_by(main_category) %>% ggplot()+geom_boxplot(aes(x=main_category,y=backers))+coord_flip()#+ylim(0,500)
+
+Positive_backers <- MainCatGrouping %>% 
+  left_join(avg_backers, by="main_category") %>%
+transmute(backers,
+          avg_backers= as.integer(ceiling(avg_backers)),
+          main_category, state,
+          difference = as.integer(backers-avg_backers))%>% 
+  filter(difference > 0)%>%
+  group_by(main_category)%>%
+  count(state)%>%
+  ggplot(aes(x=reorder(main_category,n), y=n))+geom_col(aes(fill=state))+
+  coord_flip()+labs(title='Main Categoies VS Number of Kickstarters where Number of Backers exceeds Average Backers', y="Main Categories", x="Number of Kickstarters")
+Positive_backers
+# Negative backers
+Negative_backers <- MainCatGrouping %>% left_join(avg_backers, by="main_category") %>%
+  transmute(backers, avg_backers= as.integer(ceiling(avg_backers)), main_category, state,
+            difference = as.integer(backers-avg_backers))%>%
+  filter(difference<0)%>% group_by(main_category)%>%
+  count(state)%>%ggplot(aes(x=reorder(main_category,n), y=n))+geom_col(aes(fill=state))+
+  coord_flip()+labs(title='Main Categoies VS Number of Kickstarters where Number of Backers preceeds Average Backers', y="Main Categories", x="Number of Kickstarters")
+Negative_backers
+```
+```{r avg USD for each group per year faceted by main category}
+avg_usd <- MainCatGrouping%>%group_by(main_category,year)%>%
+  summarise(total_usd = sum(usd_goal_real))%>%ggplot(aes(x=year,y=(total_usd/1000000)))+
+  geom_col(aes(fill=main_category),show.legend =FALSE)+
+  coord_flip()+facet_wrap(~main_category,ncol=5) + labs(title = "Years VS Total USD Raised in Millions", y="Total USD Raised in Millions", x="Years")# scale = "free "
+avg_usd
+```
+```{r usd for each category}
+usd_main <- MainCatGrouping%>%group_by(main_category)%>%
+  summarise(total_usd = ceiling(sum(usd_goal_real)/1000000))%>%
+  ggplot(aes(x=reorder(main_category,total_usd),y=total_usd))+
+  geom_col(aes(fill=main_category),show.legend = F)+
+  coord_flip()+labs(title="Main Categories VS Total USD raised in Millions",y="Total USD raised in Millions", x="Main Categories")
+usd_main
+```
+
+```{r date difference}
+
+date_difference <- MainCatGrouping%>%
+        transmute(main_category,state,deadline,launched_date,
+                  time_period = as.numeric(deadline-launched_date))%>%
+  group_by(main_category)%>%
+  summarise(avg_time_period=mean(time_period))%>%
+  ggplot(aes(x=main_category,y=avg_time_period))+geom_col()+coord_flip()
+
+# Left join 
+date_difference2 <- MainCatGrouping%>%left_join(date_difference,by="main_category")%>%
+  ggplot(aes(x=main_category,y=avg_time_period))+geom_boxplot(aes(fill=state))+
+  coord_flip()
+
+```
+
+```{r Avg_backers amount for each project}
+avg_backers11 <-MainCatGrouping%>% filter(backers>0)%>%group_by(main_category)%>%
+ summarise(avg_amount=as.integer(ceiling(sum(usd_pledged_real)/sum(backers))))
+  
+  
+```
