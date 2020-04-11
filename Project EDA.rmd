@@ -1,9 +1,4 @@
----
-title: "Untitled"
-author: "Tejas Jayant Patil"
-date: "1 March 2019"
-output: pdf_document
----
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
